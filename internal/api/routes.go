@@ -22,6 +22,8 @@ func SetupRouter() *gin.Engine {
 	{
 		v1Routes.GET("/health", v1.Health)
 		v1Routes.GET("/version", v1.VersionHandler)
+		v1Routes.GET("/certificates", v1.ListCertificates)
+		v1Routes.GET("/certificates/:domain", v1.GetCertificate)
 	}
 
 	return router

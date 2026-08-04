@@ -145,13 +145,22 @@ Read `acme.json`
 
 Do NOT export certificates yet.
 
-Current work:
+Status:
+
+✅ Completed
+
+Completed items
 
 * Read ACME file
 * Validate JSON
 * Parse into Go structures
 * Store in memory
-* Expose certificate metadata through API
+* Expose certificate metadata through API (`GET /api/v1/certificates`, `GET /api/v1/certificates/:domain`)
+
+Notes
+
+* The ACME file is loaded once at startup. Continuous file watching / live reload is tracked separately under Phase 2 (File Watcher).
+* Only certificate metadata (domain, SANs, issuer, serial number, validity window) is exposed. Private keys are never returned by the API.
 
 ---
 
@@ -431,22 +440,21 @@ v0.1.0
 Current Milestone:
 
 ```
-Milestone 2
+Milestone 2 (completed)
 ```
 
 Current Task:
 
 ```
-Implement ACME Reader
+Begin Phase 2: Certificate Export, File Watcher, Storage Layer, Certificate Validation
 ```
 
 Next Tasks:
 
-1. Read `acme.json`
-2. Parse multiple resolvers
-3. Build internal certificate model
-4. Create certificate inventory API
-5. Begin certificate exporter
+1. Implement continuous ACME file watching (live reload)
+2. Certificate validation (chain/expiry checks beyond basic parsing)
+3. Begin certificate exporter (fullchain.pem / privkey.pem)
+4. Design pluggable storage layer
 
 ---
 

@@ -40,11 +40,13 @@ Milestone 2
 
 Current Objective
 
-Implement ACME Reader.
+Implement ACME Reader. — ✅ Completed
 
 Read Traefik's `acme.json`, validate it, parse it, and expose certificate metadata through an API.
 
 Do NOT export certificates during this milestone.
+
+`internal/acme` parses the store into Go structs, `internal/certs` decodes certificate metadata (never key material), `internal/storage` holds it in memory, and `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose it. Next up is Phase 2 (file watching, export, storage layer, validation).
 
 ---
 
