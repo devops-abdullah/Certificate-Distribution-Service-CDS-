@@ -1,0 +1,26 @@
+# Environment
+.env
+.env.local
+
+# ACME / certificate material — never commit real certs, keys, or Traefik's store
+acme.json
+*.pem
+*.key
+*.crt
+export/
+
+# Build artifacts
+/bin/
+/dist/
+cds-server
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
