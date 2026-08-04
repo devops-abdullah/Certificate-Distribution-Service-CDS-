@@ -20,6 +20,12 @@ type Metadata struct {
 	NotBefore    time.Time `json:"notBefore,omitempty"`
 	NotAfter     time.Time `json:"notAfter,omitempty"`
 	Expired      bool      `json:"expired"`
+	// NotYetValid is true when the certificate's validity period hasn't
+	// started yet (clock skew or a pre-staged certificate).
+	NotYetValid bool `json:"notYetValid"`
+	// ExpiringSoon is true when the certificate is still valid but will
+	// expire within the configured warning window.
+	ExpiringSoon bool `json:"expiringSoon"`
 }
 
 // Input is a provider-agnostic description of a stored certificate. ACME
@@ -34,8 +40,9 @@ type Input struct {
 }
 
 // FromInput builds certificate metadata by decoding just enough of the
-// certificate to read its identity fields.
-func FromInput(in Input) (Metadata, error) {
+// certificate to read its identity fields. expiryWarningWindow controls how
+// far ahead of NotAfter a still-valid certificate is flagged ExpiringSoon.
+func FromInput(in Input, expiryWarningWindow time.Duration) (Metadata, error) {
 
 	meta := Metadata{
 		Resolver: in.Resolver,
@@ -49,11 +56,15 @@ func FromInput(in Input) (Metadata, error) {
 		return meta, fmt.Errorf("decode certificate for %s: %w", meta.Domain, err)
 	}
 
+	now := time.Now()
+
 	meta.Issuer = cert.Issuer.CommonName
 	meta.SerialNumber = cert.SerialNumber.String()
 	meta.NotBefore = cert.NotBefore
 	meta.NotAfter = cert.NotAfter
-	meta.Expired = time.Now().After(cert.NotAfter)
+	meta.Expired = now.After(cert.NotAfter)
+	meta.NotYetValid = now.Before(cert.NotBefore)
+	meta.ExpiringSoon = !meta.Expired && now.Add(expiryWarningWindow).After(cert.NotAfter)
 
 	return meta, nil
 }
