@@ -10,5 +10,10 @@ services:
       LOG_LEVEL: "info"
       ACME_FILE: "/data/acme.json"
       EXPORT_DIR: "/data/export"
+      CERT_EXPIRY_WARN_DAYS: "30"
     volumes:
       - ./examples/acme.sample.json:/data/acme.json:ro
+      - export-data:/data/export
+
+volumes:
+  export-data:

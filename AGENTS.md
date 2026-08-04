@@ -36,17 +36,18 @@ v0.1.0
 
 Current Milestone
 
-Milestone 2
+Milestone 3 / Phase 2 — ✅ Completed
 
 Current Objective
 
-Implement ACME Reader. — ✅ Completed
+Phase 3: API Authentication, mTLS, RBAC, Audit Logging.
 
-Read Traefik's `acme.json`, validate it, parse it, and expose certificate metadata through an API.
+Milestone 2 (ACME Reader) and Milestone 3 (Phase 2: File Watcher, Certificate Validation, Certificate Export, Storage Layer) are both done:
 
-Do NOT export certificates during this milestone.
-
-`internal/acme` parses the store into Go structs, `internal/certs` decodes certificate metadata (never key material), `internal/storage` holds it in memory, and `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose it. Next up is Phase 2 (file watching, export, storage layer, validation).
+* `internal/acme` parses the Traefik ACME store into Go structs and watches it (`fsnotify`) for live reload.
+* `internal/certs` decodes certificate metadata (domain, SANs, issuer, serial, expiry, `expiringSoon`, `notYetValid` — never key material for the API) and, separately, exports `fullchain.pem`/`privkey.pem` per domain under `EXPORT_DIR` atomically with `0644`/`0600` permissions.
+* `internal/storage` exposes a `Repository` interface; the in-memory `Store` is one implementation.
+* `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose metadata only, never private keys.
 
 ---
 

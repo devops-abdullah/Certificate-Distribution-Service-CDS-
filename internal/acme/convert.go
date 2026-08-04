@@ -22,3 +22,23 @@ func (s Store) ToCertificateInputs() []certs.Input {
 
 	return inputs
 }
+
+// ToExportInputs flattens every resolver's certificates into raw
+// certificate+key material suitable for exporting to disk. Unlike
+// ToCertificateInputs, this includes private key material.
+func (s Store) ToExportInputs() []certs.ExportInput {
+
+	var inputs []certs.ExportInput
+
+	for _, r := range s {
+		for _, c := range r.Certificates {
+			inputs = append(inputs, certs.ExportInput{
+				Domain:      c.Domain.Main,
+				Certificate: c.Certificate,
+				Key:         c.Key,
+			})
+		}
+	}
+
+	return inputs
+}

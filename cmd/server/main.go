@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/devops-abdullah/cds/internal/acme"
 	"github.com/devops-abdullah/cds/internal/api"
 	v1 "github.com/devops-abdullah/cds/internal/api/v1"
@@ -16,10 +18,14 @@ func main() {
 	// Config log
 	logger.Init(config.App.LogLevel)
 
-	// Load certificate metadata from the ACME store
 	certStore := storage.New()
-	loadCertificates(certStore)
+	extractor := certs.NewExtractor(config.App.ExportDir)
+	warningWindow := time.Duration(config.App.CertExpiryWarnDays) * 24 * time.Hour
+
+	refresh(certStore, extractor, warningWindow)
 	v1.SetCertificateStore(certStore)
+
+	startWatcher(certStore, extractor, warningWindow)
 
 	// API routes
 	router := api.SetupRouter()
@@ -31,16 +37,17 @@ func main() {
 	}
 }
 
-// loadCertificates reads the configured ACME store and populates the
-// in-memory certificate inventory. A missing or invalid ACME file is logged
-// as a warning rather than a fatal error, so the service can still start
-// (e.g. before Traefik has issued its first certificate).
-func loadCertificates(store *storage.Store) {
+// refresh reloads the ACME store from disk, updates the in-memory
+// certificate inventory, and re-exports fullchain.pem/privkey.pem for every
+// certificate found. A missing or invalid ACME file is logged as a warning
+// rather than fatal, so the service keeps running (e.g. before Traefik has
+// issued its first certificate) and keeps serving the last known inventory.
+func refresh(store storage.Repository, extractor *certs.Extractor, warningWindow time.Duration) {
 	parser := acme.NewParser()
 
 	acmeStore, err := parser.Parse(config.App.AcmeFile)
 	if err != nil {
-		logger.Log.WithError(err).Warn("Failed to load ACME store; starting with an empty certificate inventory")
+		logger.Log.WithError(err).Warn("Failed to load ACME store; keeping the last known certificate inventory")
 		return
 	}
 
@@ -48,14 +55,42 @@ func loadCertificates(store *storage.Store) {
 
 	metadata := make([]certs.Metadata, 0, len(inputs))
 	for _, in := range inputs {
-		meta, err := certs.FromInput(in)
+		meta, err := certs.FromInput(in, warningWindow)
 		if err != nil {
 			logger.Log.WithError(err).WithField("domain", in.Domain).Warn("Failed to parse certificate; skipping")
 			continue
+		}
+		if meta.ExpiringSoon {
+			logger.Log.WithField("domain", meta.Domain).WithField("notAfter", meta.NotAfter).Warn("Certificate is expiring soon")
 		}
 		metadata = append(metadata, meta)
 	}
 
 	store.Replace(metadata)
 	logger.Log.WithField("count", len(metadata)).Info("Loaded certificate inventory")
+
+	for _, exportErr := range extractor.Export(acmeStore.ToExportInputs()) {
+		logger.Log.WithError(exportErr).Warn("Failed to export certificate")
+	}
+}
+
+// startWatcher watches the ACME file for changes and calls refresh whenever
+// it changes, so newly issued or renewed certificates are picked up without
+// restarting the service. Failure to start the watcher (e.g. the ACME
+// file's directory doesn't exist yet) is logged rather than fatal; the
+// service still serves whatever was loaded at startup.
+func startWatcher(store storage.Repository, extractor *certs.Extractor, warningWindow time.Duration) {
+	watcher := acme.NewWatcher(config.App.AcmeFile)
+
+	go func() {
+		err := watcher.Start(nil, func() {
+			logger.Log.Info("ACME file changed; reloading certificate inventory")
+			refresh(store, extractor, warningWindow)
+		}, func(err error) {
+			logger.Log.WithError(err).Warn("ACME file watcher error")
+		})
+		if err != nil {
+			logger.Log.WithError(err).Warn("Failed to start ACME file watcher; live reload disabled")
+		}
+	}()
 }

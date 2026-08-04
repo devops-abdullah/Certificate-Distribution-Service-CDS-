@@ -8,11 +8,11 @@ import (
 	"github.com/devops-abdullah/cds/internal/storage"
 )
 
-var certificateStore *storage.Store
+var certificateStore storage.Repository
 
 // SetCertificateStore wires the certificate metadata store used by the
 // certificate inventory endpoints. Call once during startup.
-func SetCertificateStore(store *storage.Store) {
+func SetCertificateStore(store storage.Repository) {
 	certificateStore = store
 }
 
