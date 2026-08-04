@@ -133,23 +133,11 @@ Completed items
 
 ---
 
-## Current Milestone
+## Milestone History
 
-Milestone 2
+### Milestone 2 — ACME Reader
 
-### ACME Reader
-
-Current objective:
-
-Read `acme.json`
-
-Do NOT export certificates yet.
-
-Status:
-
-✅ Completed
-
-Completed items
+Status: ✅ Completed
 
 * Read ACME file
 * Validate JSON
@@ -157,23 +145,29 @@ Completed items
 * Store in memory
 * Expose certificate metadata through API (`GET /api/v1/certificates`, `GET /api/v1/certificates/:domain`)
 
-Notes
+Only certificate metadata (domain, SANs, issuer, serial number, validity window) is exposed. Private keys are never returned by the API.
 
-* The ACME file is loaded once at startup. Continuous file watching / live reload is tracked separately under Phase 2 (File Watcher).
-* Only certificate metadata (domain, SANs, issuer, serial number, validity window) is exposed. Private keys are never returned by the API.
+### Milestone 3 — Phase 2 (Certificate Lifecycle)
+
+Status: ✅ Completed
+
+* **File Watcher** — the ACME file is now watched continuously (`internal/acme/watcher.go`, fsnotify) and the in-memory inventory + on-disk export are reloaded automatically whenever it changes, instead of only at startup.
+* **Certificate Validation** — metadata now includes `expiringSoon` (within `CERT_EXPIRY_WARN_DAYS`, default 30) and `notYetValid` alongside `expired`.
+* **Certificate Export** — `fullchain.pem`/`privkey.pem` are written per domain under `EXPORT_DIR/<domain>/`, atomically (write-temp-then-rename) with `0644`/`0600` permissions respectively.
+* **Storage Layer** — `internal/storage` now exposes a `Repository` interface; the in-memory `Store` is one implementation, so a persistent backend can be added later without touching callers.
 
 ---
 
 # Planned Milestones
 
-## Phase 1
+## Phase 1 — done
 
 * Bootstrap
 * ACME Reader
 * ACME Parser
 * Certificate Inventory API
 
-## Phase 2
+## Phase 2 — done
 
 * Certificate Export
 * File Watcher
@@ -440,21 +434,21 @@ v0.1.0
 Current Milestone:
 
 ```
-Milestone 2 (completed)
+Milestone 3 / Phase 2 (completed)
 ```
 
 Current Task:
 
 ```
-Begin Phase 2: Certificate Export, File Watcher, Storage Layer, Certificate Validation
+Begin Phase 3: API Authentication, mTLS, RBAC, Audit Logging
 ```
 
 Next Tasks:
 
-1. Implement continuous ACME file watching (live reload)
-2. Certificate validation (chain/expiry checks beyond basic parsing)
-3. Begin certificate exporter (fullchain.pem / privkey.pem)
-4. Design pluggable storage layer
+1. API authentication (API keys or similar)
+2. mTLS between manager and future Certificate Agents
+3. RBAC for API access
+4. Audit logging
 
 ---
 
