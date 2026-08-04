@@ -41,9 +41,7 @@ jobs:
         run: go test ./... -race -cover
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        run: docker run --rm -v "${{ github.workspace }}:/src" -w /src golangci/golangci-lint:latest golangci-lint run ./...
 
       - name: govulncheck
         run: |
