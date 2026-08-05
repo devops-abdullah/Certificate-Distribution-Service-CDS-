@@ -3,9 +3,11 @@
 # Generates a local, throwaway ACME store (real self-signed certs + keys,
 # never committed) so `docker compose up` demonstrates the full pipeline:
 # manager loads real certs -> exports them -> the agent downloads, installs,
-# and reloads Nginx with one of them.
+# and reloads Nginx with one of them. Also generates random API keys into
+# .env (gitignored) — docker-compose.yml reads them via ${VAR} substitution
+# rather than ever having key-shaped strings committed to the repo.
 #
-# Safe to re-run; skips generation if .demo/acme.json already exists.
+# Safe to re-run; skips generation of whichever pieces already exist.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,6 +15,17 @@ DEMO_DIR="$ROOT/.demo"
 AGENT_DOMAIN="agent-demo.example.com"
 
 mkdir -p "$DEMO_DIR"
+
+if [ -f "$ROOT/.env" ]; then
+  echo ".env already exists — skipping API key generation (delete it to regenerate)."
+else
+  {
+    echo "API_KEY_READONLY=$(openssl rand -hex 16)"
+    echo "API_KEY_ADMIN=$(openssl rand -hex 16)"
+    echo "API_KEY_AGENT=$(openssl rand -hex 16)"
+  } > "$ROOT/.env"
+  echo "Wrote $ROOT/.env with random demo API keys."
+fi
 
 if [ -f "$DEMO_DIR/acme.json" ]; then
   echo ".demo/acme.json already exists — skipping generation (delete .demo/ to regenerate)."

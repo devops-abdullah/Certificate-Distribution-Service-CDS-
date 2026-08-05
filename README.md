@@ -426,10 +426,12 @@ TLS_CA
 ## Try the Full Deployment (Manager + Agent + Nginx)
 
 ```bash
-./scripts/generate-demo-data.sh   # generates real, throwaway certs into ./.demo (gitignored, never committed)
+./scripts/generate-demo-data.sh   # generates .env (random API keys) and ./.demo (real, throwaway certs) — neither is ever committed
 docker compose up -d --build
 docker compose logs -f cds agent  # watch both services live
 ```
+
+Both the certs and the API keys are generated locally by that script and gitignored — nothing key-shaped ever lives in this repo's tracked files or history, so a secret scanner has nothing to (correctly or incorrectly) flag.
 
 This starts three containers:
 
@@ -447,8 +449,8 @@ To see it prove itself end to end:
 # same everywhere)
 echo | openssl s_client -connect localhost:8443 2>/dev/null | openssl x509 -noout -subject
 
-# Full certificate inventory, including the expiring one:
-curl -s -H "X-API-Key: dev-readonly-key" http://localhost:8080/api/v1/certificates
+# Full certificate inventory, including the expiring one (reads the key .env just generated):
+curl -s -H "X-API-Key: $(grep API_KEY_READONLY .env | cut -d= -f2)" http://localhost:8080/api/v1/certificates
 ```
 
 Tear down with `docker compose down` (add `-v` to also drop the `export-data` volume).
