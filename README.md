@@ -156,6 +156,21 @@ Status: ✅ Completed
 * **Certificate Export** — `fullchain.pem`/`privkey.pem` are written per domain under `EXPORT_DIR/<domain>/`, atomically (write-temp-then-rename) with `0644`/`0600` permissions respectively.
 * **Storage Layer** — `internal/storage` now exposes a `Repository` interface; the in-memory `Store` is one implementation, so a persistent backend can be added later without touching callers.
 
+### API Dashboard (dev tool)
+
+Status: ✅ Completed
+
+`GET /dashboard` serves a same-origin HTML/JS page that exercises every route the service exposes and reports pass/fail, for checking the API by eye during development instead of hand-typing curl commands. Not part of the public API contract.
+
+### Milestone 4 — Phase 3 (API Security)
+
+Status: ✅ Completed
+
+* **API Authentication** — `API_KEY_READONLY` / `API_KEY_ADMIN` gate the certificate endpoints and the reload endpoint via an `X-API-Key` header (or `Authorization: Bearer`). With neither key configured, the API fails closed (503) rather than serving unauthenticated. `GET /api/v1/health`, `GET /api/v1/version`, `GET /metrics`, and `GET /dashboard` stay public.
+* **RBAC** — two roles, `readonly` and `admin` (admin satisfies either requirement). Reading certificate data needs either key; the new `POST /api/v1/reload` endpoint (manually triggers the same reload the file watcher does) needs the admin key.
+* **Audit Logging** — every authenticated request logs a structured `"audit": true` entry (method, path, status, role, remote IP, duration) alongside the existing application logs.
+* **mTLS** — `TLS_CERT`/`TLS_KEY` enable HTTPS; additionally setting `TLS_CLIENT_CA` requires clients to present a certificate signed by that CA (mutual TLS). With none of the three set, the server runs plain HTTP (local dev, or behind an external TLS terminator).
+
 ---
 
 # Planned Milestones
@@ -174,7 +189,7 @@ Status: ✅ Completed
 * Storage Layer
 * Certificate Validation
 
-## Phase 3
+## Phase 3 — done
 
 * API Authentication
 * mTLS
@@ -354,11 +369,17 @@ ACME_FILE
 
 EXPORT_DIR
 
-API_KEY
+CERT_EXPIRY_WARN_DAYS
+
+API_KEY_READONLY
+
+API_KEY_ADMIN
 
 TLS_CERT
 
 TLS_KEY
+
+TLS_CLIENT_CA
 ```
 
 ---
@@ -434,21 +455,21 @@ v0.1.0
 Current Milestone:
 
 ```
-Milestone 3 / Phase 2 (completed)
+Milestone 4 / Phase 3 (completed)
 ```
 
 Current Task:
 
 ```
-Begin Phase 3: API Authentication, mTLS, RBAC, Audit Logging
+Begin Phase 4: Certificate Agent, Download Engine, Atomic Installation, Nginx Integration
 ```
 
 Next Tasks:
 
-1. API authentication (API keys or similar)
-2. mTLS between manager and future Certificate Agents
-3. RBAC for API access
-4. Audit logging
+1. Design the Certificate Agent (runs on customer servers, pulls from the manager)
+2. Download engine (agent-side, authenticated against this API)
+3. Atomic installation of certs on the agent
+4. Nginx reload integration on the agent
 
 ---
 
