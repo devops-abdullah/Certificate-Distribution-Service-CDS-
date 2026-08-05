@@ -1,13 +1,19 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
+	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/devops-abdullah/cds/internal/acme"
 	"github.com/devops-abdullah/cds/internal/api"
 	v1 "github.com/devops-abdullah/cds/internal/api/v1"
 	"github.com/devops-abdullah/cds/internal/certs"
 	"github.com/devops-abdullah/cds/internal/config"
+	"github.com/devops-abdullah/cds/internal/server"
 	"github.com/devops-abdullah/cds/internal/storage"
 	"github.com/devops-abdullah/cds/pkg/logger"
 )
@@ -24,16 +30,48 @@ func main() {
 
 	refresh(certStore, extractor, warningWindow)
 	v1.SetCertificateStore(certStore)
+	v1.SetReloadFunc(func() { refresh(certStore, extractor, warningWindow) })
 
 	startWatcher(certStore, extractor, warningWindow)
 
 	// API routes
 	router := api.SetupRouter()
 
-	logger.Log.Info("Certificate Manager started on :" + config.App.Port)
-	// HTTP server start
-	if err := router.Run(":" + config.App.Port); err != nil {
-		logger.Log.WithError(err).Fatal("Failed to start HTTP server")
+	runServer(router)
+}
+
+// runServer starts the HTTP server, upgrading to TLS (and to mutual TLS, if
+// a client CA is configured) when TLS_CERT/TLS_KEY are set. With neither
+// configured it serves plain HTTP, e.g. for local development or behind an
+// external TLS terminator.
+func runServer(router *gin.Engine) {
+	srv := &http.Server{
+		Addr:    ":" + config.App.Port,
+		Handler: router,
+	}
+
+	if config.App.TLSCert == "" || config.App.TLSKey == "" {
+		logger.Log.Info("Certificate Manager started on :" + config.App.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Log.WithError(err).Fatal("Failed to start HTTP server")
+		}
+		return
+	}
+
+	tlsConfig, err := server.BuildTLSConfig(config.App.TLSClientCA)
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to configure TLS")
+	}
+	srv.TLSConfig = tlsConfig
+
+	mode := "TLS"
+	if tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert {
+		mode = "mTLS"
+	}
+	logger.Log.Info("Certificate Manager started on :" + config.App.Port + " (" + mode + ")")
+
+	if err := srv.ListenAndServeTLS(config.App.TLSCert, config.App.TLSKey); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Log.WithError(err).Fatal("Failed to start HTTPS server")
 	}
 }
 
