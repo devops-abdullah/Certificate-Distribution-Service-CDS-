@@ -441,7 +441,11 @@ To see it prove itself end to end:
 
 ```bash
 # Nginx is serving the real certificate the manager handed the agent, not a placeholder:
-curl -k -v https://localhost:8443/ 2>&1 | grep subject:
+# (uses openssl rather than curl -v — Windows' bundled curl uses the Schannel
+# TLS backend, whose -v output has no "subject:" line at all, unlike
+# OpenSSL-backed curl builds on Linux/macOS; openssl s_client behaves the
+# same everywhere)
+echo | openssl s_client -connect localhost:8443 2>/dev/null | openssl x509 -noout -subject
 
 # Full certificate inventory, including the expiring one:
 curl -s -H "X-API-Key: dev-readonly-key" http://localhost:8080/api/v1/certificates
