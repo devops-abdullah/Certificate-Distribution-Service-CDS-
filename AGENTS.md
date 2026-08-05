@@ -36,18 +36,21 @@ v0.1.0
 
 Current Milestone
 
-Milestone 3 / Phase 2 — ✅ Completed
+Milestone 4 / Phase 3 — ✅ Completed
 
 Current Objective
 
-Phase 3: API Authentication, mTLS, RBAC, Audit Logging.
+Phase 4: Certificate Agent, Download Engine, Atomic Installation, Nginx Integration.
 
-Milestone 2 (ACME Reader) and Milestone 3 (Phase 2: File Watcher, Certificate Validation, Certificate Export, Storage Layer) are both done:
+Milestone 2 (ACME Reader), Milestone 3 (Phase 2: File Watcher, Certificate Validation, Certificate Export, Storage Layer), and Milestone 4 (Phase 3: API Authentication, RBAC, Audit Logging, mTLS) are all done:
 
 * `internal/acme` parses the Traefik ACME store into Go structs and watches it (`fsnotify`) for live reload.
 * `internal/certs` decodes certificate metadata (domain, SANs, issuer, serial, expiry, `expiringSoon`, `notYetValid` — never key material for the API) and, separately, exports `fullchain.pem`/`privkey.pem` per domain under `EXPORT_DIR` atomically with `0644`/`0600` permissions.
 * `internal/storage` exposes a `Repository` interface; the in-memory `Store` is one implementation.
-* `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose metadata only, never private keys.
+* `internal/api` authenticates via `API_KEY_READONLY`/`API_KEY_ADMIN` (fails closed if neither is set), enforces RBAC (`readonly` vs `admin`), and audit-logs every authenticated request.
+* `internal/server` builds the TLS config `cmd/server/main.go` serves with; setting `TLS_CLIENT_CA` upgrades it to mTLS.
+* `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose metadata only, never private keys. `POST /api/v1/reload` (admin-only) triggers an immediate re-read of the ACME store.
+* `GET /dashboard` is a dev-only same-origin page that exercises every route and reports pass/fail.
 
 ---
 

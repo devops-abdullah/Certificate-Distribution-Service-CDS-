@@ -11,6 +11,10 @@ services:
       ACME_FILE: "/data/acme.json"
       EXPORT_DIR: "/data/export"
       CERT_EXPIRY_WARN_DAYS: "30"
+      # Dev-only placeholder keys so the dashboard/API work out of the box.
+      # Replace both for anything beyond local development.
+      API_KEY_READONLY: "dev-readonly-key"
+      API_KEY_ADMIN: "dev-admin-key"
     volumes:
       - ./examples/acme.sample.json:/data/acme.json:ro
       - export-data:/data/export
