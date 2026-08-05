@@ -20,17 +20,21 @@ const (
 	// RoleAdmin can read certificate inventory data and trigger mutating
 	// actions (e.g. a manual reload).
 	RoleAdmin Role = "admin"
+	// RoleAgent is a least-privilege role for Certificate Agents: it can
+	// only fetch a certificate bundle (cert + private key) for a domain,
+	// never list inventory or trigger a reload.
+	RoleAgent Role = "agent"
 
 	roleContextKey = "role"
 )
 
-// APIKeyAuth authenticates requests against the configured read-only and
-// admin API keys. If neither key is configured, the API fails closed
+// APIKeyAuth authenticates requests against the configured read-only,
+// admin, and agent API keys. If none are configured, the API fails closed
 // (503) rather than serving unauthenticated. The matched role is stored
 // in the request context for RequireRole to consult.
 func APIKeyAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if config.App.APIKeyReadOnly == "" && config.App.APIKeyAdmin == "" {
+		if config.App.APIKeyReadOnly == "" && config.App.APIKeyAdmin == "" && config.App.APIKeyAgent == "" {
 			v1.Error(c, http.StatusServiceUnavailable, "API authentication is not configured", nil)
 			c.Abort()
 			return
@@ -43,6 +47,8 @@ func APIKeyAuth() gin.HandlerFunc {
 			c.Set(roleContextKey, RoleAdmin)
 		case key != "" && config.App.APIKeyReadOnly != "" && keysEqual(key, config.App.APIKeyReadOnly):
 			c.Set(roleContextKey, RoleReadOnly)
+		case key != "" && config.App.APIKeyAgent != "" && keysEqual(key, config.App.APIKeyAgent):
+			c.Set(roleContextKey, RoleAgent)
 		default:
 			v1.Error(c, http.StatusUnauthorized, "Invalid or missing API key", nil)
 			c.Abort()

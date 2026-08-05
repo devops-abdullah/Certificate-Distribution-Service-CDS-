@@ -171,6 +171,21 @@ Status: ✅ Completed
 * **Audit Logging** — every authenticated request logs a structured `"audit": true` entry (method, path, status, role, remote IP, duration) alongside the existing application logs.
 * **mTLS** — `TLS_CERT`/`TLS_KEY` enable HTTPS; additionally setting `TLS_CLIENT_CA` requires clients to present a certificate signed by that CA (mutual TLS). With none of the three set, the server runs plain HTTP (local dev, or behind an external TLS terminator).
 
+### Milestone 5 — Phase 4 (Certificate Agent)
+
+Status: ✅ Completed
+
+A second binary, `cmd/agent`, that runs on customer servers:
+
+* **Certificate Agent (core)** — polls the manager on `POLL_INTERVAL_SECONDS` for each domain in `DOMAINS`. Supports mTLS to the manager via `TLS_CLIENT_CERT`/`TLS_CLIENT_KEY`/`TLS_CA`.
+* **Download Engine** — fetches `GET /api/v1/certificates/:domain/bundle` (new manager endpoint, gated by a new least-privilege `agent` role/`API_KEY_AGENT` — never the readonly or admin key) and reads the cert + private key it returns.
+* **Atomic Installation** — writes `fullchain.pem`/`privkey.pem` to `INSTALL_DIR/<domain>/` the same write-temp-then-rename way the manager's exporter does, and detects whether the content actually changed so unchanged polls don't trigger a reload.
+* **Nginx Integration** — runs `NGINX_RELOAD_CMD` (default `nginx -s reload`) only when a certificate actually changed.
+
+The bundle endpoint reads whatever the manager's exporter already wrote to `EXPORT_DIR`, so Milestone 3's Certificate Export directly backs Milestone 5's Download Engine — no separate storage was added for raw key material.
+
+`Dockerfile.agent` builds the agent alongside Nginx in one image (they run on the same host in a real deployment, since the agent needs to signal Nginx); see `deploy/agent/` for the reference Nginx config and entrypoint.
+
 ---
 
 # Planned Milestones
@@ -196,7 +211,7 @@ Status: ✅ Completed
 * RBAC
 * Audit Logging
 
-## Phase 4
+## Phase 4 — done
 
 * Certificate Agent
 * Download Engine
@@ -375,12 +390,99 @@ API_KEY_READONLY
 
 API_KEY_ADMIN
 
+API_KEY_AGENT
+
 TLS_CERT
 
 TLS_KEY
 
 TLS_CLIENT_CA
 ```
+
+## Certificate Agent Configuration (`cmd/agent`)
+
+The agent is a separate binary/process with its own environment variables:
+
+```
+MANAGER_URL
+
+API_KEY
+
+DOMAINS
+
+POLL_INTERVAL_SECONDS
+
+INSTALL_DIR
+
+NGINX_RELOAD_CMD
+
+TLS_CLIENT_CERT
+
+TLS_CLIENT_KEY
+
+TLS_CA
+```
+
+## Try the Full Deployment (Manager + Agent + Nginx)
+
+```bash
+./scripts/generate-demo-data.sh   # generates .env (random API keys) and ./.demo (real, throwaway certs) — neither is ever committed
+docker compose up -d --build
+docker compose logs -f cds agent  # watch both services live
+```
+
+Both the certs and the API keys are generated locally by that script and gitignored — nothing key-shaped ever lives in this repo's tracked files or history, so a secret scanner has nothing to (correctly or incorrectly) flag.
+
+This starts three containers:
+
+* `export-init` — a one-shot container that fixes permissions on the `export-data` volume so the manager (which runs as a non-root user) can write to it, then exits. Without this, exporting a *real* certificate fails with a permission error the first time the volume is created (the redacted placeholder keys in `examples/acme.sample.json` never hit this, since they fail to decode before ever reaching the filesystem write).
+* `cds` — the manager, on `:8080`, loaded with 3 demo certificates (one expiring in ~4 days, to show `expiringSoon` in action).
+* `agent` — the Certificate Agent + Nginx, on `:8443`. It polls the manager every 10s for `agent-demo.example.com`, installs the certificate it gets back, and reloads Nginx only when the certificate actually changed.
+
+To see it prove itself end to end:
+
+```bash
+# Nginx is serving the real certificate the manager handed the agent, not a placeholder:
+# (uses openssl rather than curl -v — Windows' bundled curl uses the Schannel
+# TLS backend, whose -v output has no "subject:" line at all, unlike
+# OpenSSL-backed curl builds on Linux/macOS; openssl s_client behaves the
+# same everywhere)
+echo | openssl s_client -connect localhost:8443 2>/dev/null | openssl x509 -noout -subject
+
+# Full certificate inventory, including the expiring one (reads the key .env just generated):
+curl -s -H "X-API-Key: $(grep API_KEY_READONLY .env | cut -d= -f2)" http://localhost:8080/api/v1/certificates
+```
+
+Tear down with `docker compose down` (add `-v` to also drop the `export-data` volume).
+
+`API_KEY` should be the manager's `API_KEY_AGENT` value — never the readonly or admin key. `DOMAINS` is a comma-separated list; the agent only ever learns about the domains it's explicitly configured for.
+
+## Nginx Already Deployed Separately? (Separate Containers)
+
+`Dockerfile.agent` bundles the agent with Nginx because `nginx -s reload` signals a *local* process — that only works when they share a container. If Nginx already runs on its own (its own container, its own image you don't want to touch), use this topology instead:
+
+* **`Dockerfile.agent-only`** — the agent alone, no Nginx bundled. Just fetches from the manager and writes into a shared volume.
+* **`Dockerfile.reload-watcher`** (`cmd/reload-watcher`) — a tiny separate process that watches that same shared volume and reloads Nginx when something changes. It runs in **its own container** but shares Nginx's **PID namespace** (`pid: "service:nginx"` in Compose, or the same Pod in Kubernetes), so it can send `nginx` a `SIGHUP` directly — no Docker socket access, no shared `/run` volume, and **no changes to your existing Nginx image at all**.
+
+```
+agent (own container) --writes--> [shared cert volume] <--reads-- nginx (your existing, untouched image)
+                                                              ^
+                                          reload-watcher (own container, shares nginx's PID namespace)
+```
+
+Try it:
+
+```bash
+./scripts/generate-demo-data.sh
+docker compose -f docker-compose.separate.yml -p cds-separate up -d --build
+docker compose -f docker-compose.separate.yml -p cds-separate logs -f agent reload-watcher
+```
+
+This starts `cds` (manager), `agent` (standalone), a stock `nginx:alpine` (standing in for your own already-deployed Nginx, completely unmodified), and `reload-watcher` alongside it.
+
+Note: `NGINX_RELOAD_CMD` has no default — it's opt-in, not assumed. Set it on the agent only if it's the one with Nginx access (the combined `Dockerfile.agent` topology); leave it unset when a separate `reload-watcher` handles reload instead.
+
+Tear down with `docker compose -f docker-compose.separate.yml -p cds-separate down -v`.
 
 ---
 
@@ -455,21 +557,20 @@ v0.1.0
 Current Milestone:
 
 ```
-Milestone 4 / Phase 3 (completed)
+Milestone 5 / Phase 4 (completed)
 ```
 
 Current Task:
 
 ```
-Begin Phase 4: Certificate Agent, Download Engine, Atomic Installation, Nginx Integration
+Begin Phase 5: Prometheus Metrics, Grafana Dashboards, Alerting
 ```
 
 Next Tasks:
 
-1. Design the Certificate Agent (runs on customer servers, pulls from the manager)
-2. Download engine (agent-side, authenticated against this API)
-3. Atomic installation of certs on the agent
-4. Nginx reload integration on the agent
+1. Agent-side metrics (poll success/failure, install/reload counts)
+2. Grafana dashboards for manager + agent fleet visibility
+3. Alerting on expiring/failed certificates and agent staleness
 
 ---
 

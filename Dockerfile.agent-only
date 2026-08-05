@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+#
+# Standalone Certificate Agent image with no bundled Nginx, for
+# deployments where Nginx already runs in its own separate container.
+# Pair with Dockerfile.reload-watcher on the Nginx side — see README's
+# "Separate containers" deployment section.
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/cds-agent ./cmd/agent
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/cds-agent /usr/local/bin/cds-agent
+
+ENTRYPOINT ["/usr/local/bin/cds-agent"]

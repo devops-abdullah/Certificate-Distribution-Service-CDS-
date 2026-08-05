@@ -16,10 +16,16 @@ func init() {
 
 func setKeys(t *testing.T, readOnly, admin string) {
 	t.Helper()
+	setKeysWithAgent(t, readOnly, admin, "")
+}
+
+func setKeysWithAgent(t *testing.T, readOnly, admin, agent string) {
+	t.Helper()
 
 	original := config.App
 	config.App.APIKeyReadOnly = readOnly
 	config.App.APIKeyAdmin = admin
+	config.App.APIKeyAgent = agent
 
 	t.Cleanup(func() { config.App = original })
 }
@@ -30,6 +36,9 @@ func newAuthTestRouter() *gin.Engine {
 		c.Status(http.StatusOK)
 	})
 	r.GET("/admin-only", APIKeyAuth(), RequireRole(RoleAdmin), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	r.GET("/agent-only", APIKeyAuth(), RequireRole(RoleAgent), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 	return r
@@ -101,6 +110,42 @@ func TestAPIKeyAuth_AdminKey_AccessesBothRoutes(t *testing.T) {
 
 	if w := doRequest(router, "/admin-only", "admin-secret"); w.Code != http.StatusOK {
 		t.Fatalf("admin on admin route: expected %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestAPIKeyAuth_AgentKey_AccessesAgentRoute(t *testing.T) {
+	setKeysWithAgent(t, "read-secret", "admin-secret", "agent-secret")
+
+	w := doRequest(newAuthTestRouter(), "/agent-only", "agent-secret")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestAPIKeyAuth_AgentKey_DeniedFromReadOnlyRoute(t *testing.T) {
+	setKeysWithAgent(t, "read-secret", "admin-secret", "agent-secret")
+
+	w := doRequest(newAuthTestRouter(), "/protected", "agent-secret")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected %d, got %d", http.StatusForbidden, w.Code)
+	}
+}
+
+func TestAPIKeyAuth_ReadOnlyKey_DeniedFromAgentRoute(t *testing.T) {
+	setKeysWithAgent(t, "read-secret", "admin-secret", "agent-secret")
+
+	w := doRequest(newAuthTestRouter(), "/agent-only", "read-secret")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected %d, got %d", http.StatusForbidden, w.Code)
+	}
+}
+
+func TestAPIKeyAuth_AdminKey_AccessesAgentRouteToo(t *testing.T) {
+	setKeysWithAgent(t, "read-secret", "admin-secret", "agent-secret")
+
+	w := doRequest(newAuthTestRouter(), "/agent-only", "admin-secret")
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, w.Code)
 	}
 }
 

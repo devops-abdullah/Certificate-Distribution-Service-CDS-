@@ -1,0 +1,24 @@
+# Gitleaks configuration for CDS.
+#
+# [allowlist] below exempts specific, known-fake placeholder strings that
+# appear in this repo's earlier commit history. docker-compose.yml and
+# README.md used to hardcode literal example API keys
+# ("dev-readonly-key", "dev-admin-key", "dev-agent-key") — never real
+# credentials, but shaped enough like one that Gitleaks (correctly, by its
+# own rules) flagged them. Going forward, scripts/generate-demo-data.sh
+# generates random keys into a gitignored .env file instead, so nothing
+# key-shaped is committed at all — see the commit that introduced this file
+# for the full explanation.
+#
+# This allowlist matches only these exact literal strings, so it cannot
+# mask an unrelated, real future leak.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-fake placeholder demo keys from prior commits, replaced with generated-at-runtime values"
+regexes = [
+  '''dev-readonly-key''',
+  '''dev-admin-key''',
+  '''dev-agent-key''',
+]
