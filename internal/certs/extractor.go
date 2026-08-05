@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/devops-abdullah/cds/pkg/utils"
 )
 
 // ExportInput carries the raw certificate and key material needed to write
@@ -58,30 +60,12 @@ func (e *Extractor) exportOne(in ExportInput) error {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
-	if err := writeFileAtomic(filepath.Join(dir, "fullchain.pem"), cert, 0o644); err != nil {
+	if err := utils.WriteFileAtomic(filepath.Join(dir, "fullchain.pem"), cert, 0o644); err != nil {
 		return fmt.Errorf("write fullchain.pem: %w", err)
 	}
 
-	if err := writeFileAtomic(filepath.Join(dir, "privkey.pem"), key, 0o600); err != nil {
+	if err := utils.WriteFileAtomic(filepath.Join(dir, "privkey.pem"), key, 0o600); err != nil {
 		return fmt.Errorf("write privkey.pem: %w", err)
-	}
-
-	return nil
-}
-
-// writeFileAtomic writes data to a temp file in the same directory as path
-// and renames it into place, so readers never observe a partially written
-// certificate or key.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-
-	if err := os.WriteFile(tmp, data, perm); err != nil {
-		return err
-	}
-
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
 	}
 
 	return nil
