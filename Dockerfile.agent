@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+#
+# Builds the Certificate Agent alongside Nginx in one image, since in a real
+# deployment the agent runs on the same host as the Nginx it reloads.
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/cds-agent ./cmd/agent
+
+FROM nginx:alpine
+RUN apk add --no-cache openssl
+
+COPY --from=build /out/cds-agent /usr/local/bin/cds-agent
+COPY deploy/agent/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/agent/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
