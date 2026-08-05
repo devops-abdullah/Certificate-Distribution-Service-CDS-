@@ -451,6 +451,33 @@ Tear down with `docker compose down` (add `-v` to also drop the `export-data` vo
 
 `API_KEY` should be the manager's `API_KEY_AGENT` value — never the readonly or admin key. `DOMAINS` is a comma-separated list; the agent only ever learns about the domains it's explicitly configured for.
 
+## Nginx Already Deployed Separately? (Separate Containers)
+
+`Dockerfile.agent` bundles the agent with Nginx because `nginx -s reload` signals a *local* process — that only works when they share a container. If Nginx already runs on its own (its own container, its own image you don't want to touch), use this topology instead:
+
+* **`Dockerfile.agent-only`** — the agent alone, no Nginx bundled. Just fetches from the manager and writes into a shared volume.
+* **`Dockerfile.reload-watcher`** (`cmd/reload-watcher`) — a tiny separate process that watches that same shared volume and reloads Nginx when something changes. It runs in **its own container** but shares Nginx's **PID namespace** (`pid: "service:nginx"` in Compose, or the same Pod in Kubernetes), so it can send `nginx` a `SIGHUP` directly — no Docker socket access, no shared `/run` volume, and **no changes to your existing Nginx image at all**.
+
+```
+agent (own container) --writes--> [shared cert volume] <--reads-- nginx (your existing, untouched image)
+                                                              ^
+                                          reload-watcher (own container, shares nginx's PID namespace)
+```
+
+Try it:
+
+```bash
+./scripts/generate-demo-data.sh
+docker compose -f docker-compose.separate.yml -p cds-separate up -d --build
+docker compose -f docker-compose.separate.yml -p cds-separate logs -f agent reload-watcher
+```
+
+This starts `cds` (manager), `agent` (standalone), a stock `nginx:alpine` (standing in for your own already-deployed Nginx, completely unmodified), and `reload-watcher` alongside it.
+
+Note: `NGINX_RELOAD_CMD` has no default — it's opt-in, not assumed. Set it on the agent only if it's the one with Nginx access (the combined `Dockerfile.agent` topology); leave it unset when a separate `reload-watcher` handles reload instead.
+
+Tear down with `docker compose -f docker-compose.separate.yml -p cds-separate down -v`.
+
 ---
 
 # Future Providers
