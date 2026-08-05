@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+#
+# Tiny watcher that reloads Nginx when installed certificates change, for
+# deployments where the Certificate Agent and Nginx run in separate
+# containers. Deploy this alongside your existing Nginx container, sharing
+# its PID namespace (`pid: "service:nginx"` in Compose, or the same Pod in
+# Kubernetes) and the certificate volume the agent writes into. Does not
+# require the Docker socket and does not touch your Nginx image at all.
+
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/reload-watcher ./cmd/reload-watcher
+
+FROM alpine:3
+RUN apk add --no-cache procps
+
+COPY --from=build /out/reload-watcher /usr/local/bin/reload-watcher
+
+ENTRYPOINT ["/usr/local/bin/reload-watcher"]
