@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CDS API Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --status-good:     #0ca30c;
+    --status-critical: #d03b3b;
+    --status-good-bg:     rgba(12,163,12,0.10);
+    --status-critical-bg: rgba(208,59,59,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --status-good:     #0ca30c;
+      --status-critical: #e66767;
+      --status-good-bg:     rgba(12,163,12,0.16);
+      --status-critical-bg: rgba(230,103,103,0.16);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 64px;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+  h1 { font-size: 20px; margin: 0; }
+  .subtitle { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    font-size: 13px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--text-secondary); }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .summary { display: flex; gap: 16px; margin-bottom: 20px; font-size: 13px; color: var(--text-secondary); }
+  .summary strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--gridline);
+  }
+  tbody tr + tr td { border-top: 1px solid var(--gridline); }
+  tbody td { padding: 10px 14px; vertical-align: top; }
+  tbody tr:hover { background: rgba(127,127,127,0.05); }
+
+  .method { font-weight: 600; color: var(--text-secondary); font-size: 11px; }
+  .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .pill.good { color: var(--status-good); background: var(--status-good-bg); }
+  .pill.critical { color: var(--status-critical); background: var(--status-critical-bg); }
+  .pill.pending { color: var(--text-muted); background: rgba(127,127,127,0.10); }
+
+  .meta { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  details summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12px;
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary:before { content: "▸ "; }
+  details[open] summary:before { content: "▾ "; }
+  pre {
+    margin: 8px 0 0;
+    padding: 10px;
+    background: var(--page-plane);
+    border: 1px solid var(--gridline);
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    max-height: 240px;
+  }
+
+  footer { margin-top: 16px; font-size: 12px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>CDS API Dashboard</h1>
+      <div class="subtitle">Same-origin smoke test for every route this service exposes</div>
+    </div>
+    <button id="rerun">Re-run all</button>
+  </header>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32%">Endpoint</th>
+          <th style="width:14%">Result</th>
+          <th style="width:14%">Status</th>
+          <th style="width:14%">Time</th>
+          <th>Response</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <footer>Checked against <code id="origin"></code> · results are not cached, each run hits the live API</footer>
+</div>
+
+<script>
+  document.getElementById('origin').textContent = location.origin;
+
+  // Static test cases. The certificate-detail cases are appended dynamically
+  // after the inventory call returns, so this list stays in sync with
+  // whatever the API actually has loaded.
+  function baseCases() {
+    return [
+      { method: 'GET', path: '/api/v1/health', expect: 200, desc: 'Liveness check' },
+      { method: 'GET', path: '/api/v1/version', expect: 200, desc: 'Service/version info' },
+      { method: 'GET', path: '/api/v1/certificates', expect: 200, desc: 'Certificate inventory', id: 'inventory' },
+      { method: 'GET', path: '/api/v1/certificates/__does-not-exist__', expect: 404, desc: 'Unknown domain -> not found' },
+      { method: 'GET', path: '/api/v1/nope', expect: 404, desc: 'Unmatched route -> not found' },
+      { method: 'GET', path: '/metrics', expect: 200, desc: 'Prometheus metrics', raw: true },
+    ];
+  }
+
+  const rowsEl = document.getElementById('rows');
+  const summaryEl = document.getElementById('summary');
+  const rerunBtn = document.getElementById('rerun');
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderRow(tc) {
+    const tr = document.createElement('tr');
+    tr.id = 'row-' + tc.rowId;
+    tr.innerHTML = `
+      <td>
+        <div><span class="method">${tc.method}</span> <span class="path">${escapeHtml(tc.path)}</span></div>
+        <div class="desc">${escapeHtml(tc.desc)}</div>
+      </td>
+      <td><span class="pill pending">… running</span></td>
+      <td class="meta">—</td>
+      <td class="meta">—</td>
+      <td>—</td>
+    `;
+    rowsEl.appendChild(tr);
+    return tr;
+  }
+
+  async function runCase(tc) {
+    const tr = document.getElementById('row-' + tc.rowId);
+    const start = performance.now();
+    let status = null, bodyText = '', ok = false, error = null;
+
+    try {
+      const res = await fetch(tc.path, { headers: { 'Accept': 'application/json' } });
+      status = res.status;
+      bodyText = await res.text();
+      ok = status === tc.expect;
+    } catch (e) {
+      error = e.message || String(e);
+    }
+
+    const elapsed = Math.round(performance.now() - start);
+
+    let preview = error ? error : bodyText;
+    if (!error && !tc.raw) {
+      try { preview = JSON.stringify(JSON.parse(bodyText), null, 2); } catch (_) { /* leave as-is */ }
+    } else if (!error && tc.raw) {
+      preview = bodyText.split('\n').slice(0, 6).join('\n') + '\n…';
+    }
+
+    tr.querySelector('td:nth-child(2)').innerHTML = ok
+      ? '<span class="pill good">✓ pass</span>'
+      : '<span class="pill critical">✗ fail</span>';
+    tr.querySelector('td:nth-child(3)').textContent = error ? 'error' : `${status} (want ${tc.expect})`;
+    tr.querySelector('td:nth-child(4)').textContent = elapsed + ' ms';
+    tr.querySelector('td:nth-child(5)').innerHTML =
+      `<details><summary>view</summary><pre>${escapeHtml(preview)}</pre></details>`;
+
+    return { tc, ok, status, bodyText, error };
+  }
+
+  async function runAll() {
+    rerunBtn.disabled = true;
+    rowsEl.innerHTML = '';
+    summaryEl.textContent = 'Running…';
+
+    const cases = baseCases().map((tc, i) => ({ ...tc, rowId: i }));
+    cases.forEach(renderRow);
+
+    const results = [];
+    for (const tc of cases) {
+      results.push(await runCase(tc));
+    }
+
+    // If the inventory call succeeded and returned certificates, add a
+    // detail-lookup test case per domain (capped) so this list always
+    // reflects what's actually loaded right now.
+    const inventory = results.find(r => r.tc.id === 'inventory');
+    if (inventory && !inventory.error && inventory.status === 200) {
+      try {
+        const parsed = JSON.parse(inventory.bodyText);
+        const domains = (parsed.data || []).map(d => d.domain).slice(0, 5);
+        let nextId = cases.length;
+        for (const domain of domains) {
+          const tc = {
+            method: 'GET',
+            path: '/api/v1/certificates/' + encodeURIComponent(domain),
+            expect: 200,
+            desc: 'Certificate detail: ' + domain,
+            rowId: nextId++,
+          };
+          renderRow(tc);
+          results.push(await runCase(tc));
+        }
+      } catch (_) { /* inventory body wasn't valid JSON; skip detail cases */ }
+    }
+
+    const passCount = results.filter(r => r.ok).length;
+    summaryEl.innerHTML = `<span><strong>${passCount}</strong> / <strong>${results.length}</strong> passing</span>` +
+      `<span>Last run: ${new Date().toLocaleTimeString()}</span>`;
+
+    rerunBtn.disabled = false;
+  }
+
+  rerunBtn.addEventListener('click', runAll);
+  runAll();
+</script>
+</body>
+</html>
