@@ -423,6 +423,32 @@ TLS_CLIENT_KEY
 TLS_CA
 ```
 
+## Try the Full Deployment (Manager + Agent + Nginx)
+
+```bash
+./scripts/generate-demo-data.sh   # generates real, throwaway certs into ./.demo (gitignored, never committed)
+docker compose up -d --build
+docker compose logs -f cds agent  # watch both services live
+```
+
+This starts three containers:
+
+* `export-init` — a one-shot container that fixes permissions on the `export-data` volume so the manager (which runs as a non-root user) can write to it, then exits. Without this, exporting a *real* certificate fails with a permission error the first time the volume is created (the redacted placeholder keys in `examples/acme.sample.json` never hit this, since they fail to decode before ever reaching the filesystem write).
+* `cds` — the manager, on `:8080`, loaded with 3 demo certificates (one expiring in ~4 days, to show `expiringSoon` in action).
+* `agent` — the Certificate Agent + Nginx, on `:8443`. It polls the manager every 10s for `agent-demo.example.com`, installs the certificate it gets back, and reloads Nginx only when the certificate actually changed.
+
+To see it prove itself end to end:
+
+```bash
+# Nginx is serving the real certificate the manager handed the agent, not a placeholder:
+curl -k -v https://localhost:8443/ 2>&1 | grep subject:
+
+# Full certificate inventory, including the expiring one:
+curl -s -H "X-API-Key: dev-readonly-key" http://localhost:8080/api/v1/certificates
+```
+
+Tear down with `docker compose down` (add `-v` to also drop the `export-data` volume).
+
 `API_KEY` should be the manager's `API_KEY_AGENT` value — never the readonly or admin key. `DOMAINS` is a comma-separated list; the agent only ever learns about the domains it's explicitly configured for.
 
 ---
