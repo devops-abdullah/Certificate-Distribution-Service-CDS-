@@ -36,21 +36,22 @@ v0.1.0
 
 Current Milestone
 
-Milestone 4 / Phase 3 — ✅ Completed
+Milestone 5 / Phase 4 — ✅ Completed
 
 Current Objective
 
-Phase 4: Certificate Agent, Download Engine, Atomic Installation, Nginx Integration.
+Phase 5: Prometheus Metrics, Grafana Dashboards, Alerting.
 
-Milestone 2 (ACME Reader), Milestone 3 (Phase 2: File Watcher, Certificate Validation, Certificate Export, Storage Layer), and Milestone 4 (Phase 3: API Authentication, RBAC, Audit Logging, mTLS) are all done:
+Milestone 2 (ACME Reader), Milestone 3 (Phase 2: File Watcher, Certificate Validation, Certificate Export, Storage Layer), Milestone 4 (Phase 3: API Authentication, RBAC, Audit Logging, mTLS), and Milestone 5 (Phase 4: Certificate Agent, Download Engine, Atomic Installation, Nginx Integration) are all done:
 
 * `internal/acme` parses the Traefik ACME store into Go structs and watches it (`fsnotify`) for live reload.
 * `internal/certs` decodes certificate metadata (domain, SANs, issuer, serial, expiry, `expiringSoon`, `notYetValid` — never key material for the API) and, separately, exports `fullchain.pem`/`privkey.pem` per domain under `EXPORT_DIR` atomically with `0644`/`0600` permissions.
 * `internal/storage` exposes a `Repository` interface; the in-memory `Store` is one implementation.
-* `internal/api` authenticates via `API_KEY_READONLY`/`API_KEY_ADMIN` (fails closed if neither is set), enforces RBAC (`readonly` vs `admin`), and audit-logs every authenticated request.
+* `internal/api` authenticates via `API_KEY_READONLY`/`API_KEY_ADMIN`/`API_KEY_AGENT` (fails closed if none are set), enforces RBAC (`readonly`/`admin`/`agent`, admin satisfies any check), and audit-logs every authenticated request (including failed attempts).
 * `internal/server` builds the TLS config `cmd/server/main.go` serves with; setting `TLS_CLIENT_CA` upgrades it to mTLS.
-* `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose metadata only, never private keys. `POST /api/v1/reload` (admin-only) triggers an immediate re-read of the ACME store.
+* `GET /api/v1/certificates` / `GET /api/v1/certificates/:domain` expose metadata only, never private keys. `GET /api/v1/certificates/:domain/bundle` (agent/admin only) serves the actual cert+key, read from `EXPORT_DIR`. `POST /api/v1/reload` (admin-only) triggers an immediate re-read of the ACME store.
 * `GET /dashboard` is a dev-only same-origin page that exercises every route and reports pass/fail.
+* `cmd/agent` (`internal/agent`) is the Certificate Agent: polls the manager's bundle endpoint per configured domain, installs atomically via `pkg/utils.WriteFileAtomic` (shared with the manager's exporter), skips reload when content is unchanged, and runs `NGINX_RELOAD_CMD` when it does change. `Dockerfile.agent` + `deploy/agent/` build it alongside Nginx for local testing.
 
 ---
 
