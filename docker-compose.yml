@@ -55,6 +55,9 @@ services:
       DOMAINS: "agent-demo.example.com"
       POLL_INTERVAL_SECONDS: "10"
       INSTALL_DIR: "/etc/cds-agent/certs"
+      # This image bundles Nginx (Dockerfile.agent), so the agent can
+      # reload it directly. Reload is opt-in, not a default.
+      NGINX_RELOAD_CMD: "nginx -s reload"
 
 volumes:
   export-data:

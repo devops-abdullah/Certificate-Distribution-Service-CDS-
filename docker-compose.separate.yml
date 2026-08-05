@@ -1,0 +1,122 @@
+# Demonstrates the Certificate Agent and Nginx running in SEPARATE
+# containers, for deployments where Nginx already exists and you don't
+# want to touch its image. Run alongside (or instead of) docker-compose.yml:
+#
+#   ./scripts/generate-demo-data.sh
+#   docker compose -f docker-compose.separate.yml up -d --build
+#
+# Topology:
+#   cds (manager) <--HTTP-- agent --writes--> agent-certs (volume) <--reads-- nginx
+#                                                                       ^
+#                                                        reload-watcher (shares nginx's
+#                                                        PID namespace, signals it on
+#                                                        change; no Docker socket, no
+#                                                        changes to the nginx image)
+services:
+  export-init:
+    image: busybox
+    command: sh -c "mkdir -p /data/export && chmod -R 0777 /data/export"
+    volumes:
+      - export-data:/data/export
+
+  cds:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      export-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      LOG_LEVEL: "info"
+      ACME_FILE: "/data/acme.json"
+      EXPORT_DIR: "/data/export"
+      CERT_EXPIRY_WARN_DAYS: "30"
+      API_KEY_READONLY: "dev-readonly-key"
+      API_KEY_ADMIN: "dev-admin-key"
+      API_KEY_AGENT: "dev-agent-key"
+    volumes:
+      - ./.demo/acme.json:/data/acme.json:ro
+      - export-data:/data/export
+
+  # Seeds a throwaway placeholder certificate into the shared volume so
+  # Nginx can start before the agent has fetched anything real — stands in
+  # for "Nginx already had some certificate before the agent took over",
+  # which is the real state in any actual deployment.
+  cert-seed:
+    image: alpine:3
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache openssl >/dev/null
+        mkdir -p /certs/agent-demo.example.com
+        if [ ! -f /certs/agent-demo.example.com/fullchain.pem ]; then
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout /certs/agent-demo.example.com/privkey.pem \
+            -out /certs/agent-demo.example.com/fullchain.pem \
+            -noenc -days 1 -subj //CN=placeholder
+        fi
+        chmod -R 0777 /certs
+    volumes:
+      - agent-certs:/certs
+
+  # The agent: standalone, no Nginx bundled — just fetches from the
+  # manager and writes into the shared certificate volume.
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-only
+    depends_on:
+      cds:
+        condition: service_started
+      cert-seed:
+        condition: service_completed_successfully
+    environment:
+      MANAGER_URL: "http://cds:8080"
+      API_KEY: "dev-agent-key"
+      DOMAINS: "agent-demo.example.com"
+      POLL_INTERVAL_SECONDS: "10"
+      INSTALL_DIR: "/certs"
+      # NGINX_RELOAD_CMD deliberately left unset (agent's default is now
+      # "no reload") — that's the separate reload-watcher's job in this
+      # topology, since the agent has no access to Nginx's process from
+      # its own container, and this standalone image has no nginx binary
+      # at all.
+    volumes:
+      - agent-certs:/certs
+
+  # Stands in for "your own, already-deployed Nginx" — the stock image,
+  # completely unmodified, just pointed at the shared certificate volume.
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      cert-seed:
+        condition: service_completed_successfully
+    ports:
+      - "8543:8443"
+    volumes:
+      - ./deploy/reload-watcher/nginx.conf:/etc/nginx/nginx.conf:ro
+      - agent-certs:/certs:ro
+
+  # Lives in its own container but shares Nginx's PID namespace, so it can
+  # signal Nginx directly when a certificate changes — no Docker socket, no
+  # shared /run volume, no changes to the Nginx image at all.
+  reload-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.reload-watcher
+    pid: "service:nginx"
+    depends_on:
+      - nginx
+    environment:
+      WATCH_DIR: "/certs"
+      RELOAD_CMD: "pkill -HUP -o nginx"
+    volumes:
+      - agent-certs:/certs:ro
+
+volumes:
+  export-data:
+  agent-certs:
