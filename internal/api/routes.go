@@ -36,6 +36,7 @@ func SetupRouter() *gin.Engine {
 	{
 		protected.GET("/certificates", RequireRole(RoleReadOnly), v1.ListCertificates)
 		protected.GET("/certificates/:domain", RequireRole(RoleReadOnly), v1.GetCertificate)
+		protected.GET("/certificates/:domain/bundle", RequireRole(RoleAgent), v1.GetCertificateBundle)
 		protected.POST("/reload", RequireRole(RoleAdmin), v1.Reload)
 	}
 
