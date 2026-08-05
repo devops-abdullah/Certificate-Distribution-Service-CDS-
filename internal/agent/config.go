@@ -37,7 +37,13 @@ func Load() {
 	viper.SetDefault("DOMAINS", "")
 	viper.SetDefault("POLL_INTERVAL_SECONDS", 60)
 	viper.SetDefault("INSTALL_DIR", "/etc/cds-agent/certs")
-	viper.SetDefault("NGINX_RELOAD_CMD", "nginx -s reload")
+	// No default: reload is opt-in, not assumed. In a combined agent+Nginx
+	// deployment (Dockerfile.agent), set this explicitly to
+	// "nginx -s reload". In a separate-containers deployment
+	// (Dockerfile.agent-only), leave it unset — a reload-watcher living
+	// alongside Nginx handles reload instead, since the agent has no way
+	// to signal a process in another container.
+	viper.SetDefault("NGINX_RELOAD_CMD", "")
 	viper.SetDefault("TLS_CLIENT_CERT", "")
 	viper.SetDefault("TLS_CLIENT_KEY", "")
 	viper.SetDefault("TLS_CA", "")

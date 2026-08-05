@@ -91,6 +91,29 @@ func TestPoll_SkipsReloadWhenUnchanged(t *testing.T) {
 	}
 }
 
+func TestPoll_SkipsReloadWhenNoCommandConfigured(t *testing.T) {
+	srv := newBundleServer(t, "CERT-1")
+	defer srv.Close()
+
+	installDir := t.TempDir()
+
+	cfg := Config{
+		Domains:        []string{"example.com"},
+		NginxReloadCmd: "", // e.g. a separate reload-watcher handles it instead
+	}
+	client := NewClient(srv.URL, "agent-secret", nil)
+	installer := NewInstaller(installDir)
+
+	var events []string
+	onLog := func(event string, fields map[string]interface{}) { events = append(events, event) }
+
+	poll(cfg, client, installer, onLog)
+
+	if events[len(events)-1] != "reload_skipped" {
+		t.Errorf("expected last event to be \"reload_skipped\", got %v", events)
+	}
+}
+
 func TestRun_StopsCleanly(t *testing.T) {
 	srv := newBundleServer(t, "CERT-1")
 	defer srv.Close()

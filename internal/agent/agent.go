@@ -46,6 +46,11 @@ func poll(cfg Config, client *Client, installer *Installer, onLog LogFunc) {
 
 		onLog("installed", map[string]interface{}{"domain": domain})
 
+		if cfg.NginxReloadCmd == "" {
+			onLog("reload_skipped", map[string]interface{}{"domain": domain, "reason": "no NGINX_RELOAD_CMD configured"})
+			continue
+		}
+
 		if err := ReloadNginx(cfg.NginxReloadCmd); err != nil {
 			onLog("reload_failed", map[string]interface{}{"domain": domain, "error": err.Error()})
 			continue
