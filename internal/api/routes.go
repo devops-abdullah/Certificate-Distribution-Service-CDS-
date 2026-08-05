@@ -26,8 +26,17 @@ func SetupRouter() *gin.Engine {
 	{
 		v1Routes.GET("/health", v1.Health)
 		v1Routes.GET("/version", v1.VersionHandler)
-		v1Routes.GET("/certificates", v1.ListCertificates)
-		v1Routes.GET("/certificates/:domain", v1.GetCertificate)
+	}
+
+	// Certificate data and the manual reload trigger require an API key.
+	// AuditLog runs first so failed/unauthorized attempts are recorded too,
+	// not just successfully authenticated requests.
+	protected := v1Routes.Group("")
+	protected.Use(AuditLog(), APIKeyAuth())
+	{
+		protected.GET("/certificates", RequireRole(RoleReadOnly), v1.ListCertificates)
+		protected.GET("/certificates/:domain", RequireRole(RoleReadOnly), v1.GetCertificate)
+		protected.POST("/reload", RequireRole(RoleAdmin), v1.Reload)
 	}
 
 	return router
