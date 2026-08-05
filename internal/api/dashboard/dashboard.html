@@ -67,6 +67,37 @@
   .summary { display: flex; gap: 16px; margin-bottom: 20px; font-size: 13px; color: var(--text-secondary); }
   .summary strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
+  .keys-card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .keys-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .keys-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .keys-row label { flex: 1; min-width: 220px; font-size: 12px; color: var(--text-secondary); }
+  .keys-row input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 10px;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    border: 1px solid var(--gridline);
+    border-radius: 6px;
+  }
+  .keys-row input:focus { outline: none; border-color: var(--text-secondary); }
+
   .card {
     background: var(--surface-1);
     border: 1px solid var(--border);
@@ -142,6 +173,18 @@
     <button id="rerun">Re-run all</button>
   </header>
 
+  <div class="keys-card">
+    <div class="keys-label">API keys (kept in this browser's local storage only, never sent anywhere but this API)</div>
+    <div class="keys-row">
+      <label>Read-only key
+        <input id="readKey" type="password" placeholder="optional — leave blank to test unauthenticated access" autocomplete="off">
+      </label>
+      <label>Admin key
+        <input id="adminKey" type="password" placeholder="optional — required to test /reload" autocomplete="off">
+      </label>
+    </div>
+  </div>
+
   <div class="summary" id="summary"></div>
 
   <div class="card">
@@ -165,23 +208,70 @@
 <script>
   document.getElementById('origin').textContent = location.origin;
 
+  const readKeyEl = document.getElementById('readKey');
+  const adminKeyEl = document.getElementById('adminKey');
+  readKeyEl.value = localStorage.getItem('cds_read_key') || '';
+  adminKeyEl.value = localStorage.getItem('cds_admin_key') || '';
+
+  function authHeaders(role) {
+    // role: 'read' uses the read-only key if present, else falls back to
+    // the admin key (an admin key satisfies read-only routes too);
+    // 'admin' only uses the admin key, since that's what RBAC requires.
+    const read = readKeyEl.value.trim();
+    const admin = adminKeyEl.value.trim();
+    const key = role === 'admin' ? admin : (read || admin);
+    return key ? { 'X-API-Key': key } : {};
+  }
+
   // Static test cases. The certificate-detail cases are appended dynamically
   // after the inventory call returns, so this list stays in sync with
-  // whatever the API actually has loaded.
+  // whatever the API actually has loaded. expect is a function so it can
+  // reflect whichever keys are currently entered above.
   function baseCases() {
+    const hasReadAccess = !!(readKeyEl.value.trim() || adminKeyEl.value.trim());
+    const hasAdminAccess = !!adminKeyEl.value.trim();
+
     return [
-      { method: 'GET', path: '/api/v1/health', expect: 200, desc: 'Liveness check' },
-      { method: 'GET', path: '/api/v1/version', expect: 200, desc: 'Service/version info' },
-      { method: 'GET', path: '/api/v1/certificates', expect: 200, desc: 'Certificate inventory', id: 'inventory' },
-      { method: 'GET', path: '/api/v1/certificates/__does-not-exist__', expect: 404, desc: 'Unknown domain -> not found' },
-      { method: 'GET', path: '/api/v1/nope', expect: 404, desc: 'Unmatched route -> not found' },
-      { method: 'GET', path: '/metrics', expect: 200, desc: 'Prometheus metrics', raw: true },
+      { method: 'GET', path: '/api/v1/health', expect: 200, desc: 'Liveness check (public)' },
+      { method: 'GET', path: '/api/v1/version', expect: 200, desc: 'Service/version info (public)' },
+      {
+        method: 'GET', path: '/api/v1/certificates', role: 'read', id: 'inventory',
+        expect: hasReadAccess ? 200 : 401,
+        desc: hasReadAccess ? 'Certificate inventory' : 'Certificate inventory — no key entered, expecting 401',
+      },
+      {
+        method: 'GET', path: '/api/v1/certificates/__does-not-exist__', role: 'read',
+        expect: hasReadAccess ? 404 : 401,
+        desc: hasReadAccess ? 'Unknown domain -> not found' : 'Unknown domain — no key entered, expecting 401',
+      },
+      { method: 'GET', path: '/api/v1/nope', expect: 404, desc: 'Unmatched route -> not found (public 404, no auth involved)' },
+      { method: 'GET', path: '/metrics', expect: 200, desc: 'Prometheus metrics (public)', raw: true },
+      {
+        method: 'POST', path: '/api/v1/reload', role: 'admin',
+        expect: hasAdminAccess ? 200 : (hasReadAccess ? 403 : 401),
+        desc: hasAdminAccess
+          ? 'Manual reload trigger (admin-only)'
+          : hasReadAccess
+            ? 'Manual reload — only a read-only key entered, expecting 403 (RBAC denies it)'
+            : 'Manual reload — no key entered, expecting 401',
+      },
     ];
   }
 
   const rowsEl = document.getElementById('rows');
   const summaryEl = document.getElementById('summary');
   const rerunBtn = document.getElementById('rerun');
+
+  ['change', 'blur'].forEach(evt => {
+    readKeyEl.addEventListener(evt, saveKeysAndRerun);
+    adminKeyEl.addEventListener(evt, saveKeysAndRerun);
+  });
+
+  function saveKeysAndRerun() {
+    localStorage.setItem('cds_read_key', readKeyEl.value.trim());
+    localStorage.setItem('cds_admin_key', adminKeyEl.value.trim());
+    runAll();
+  }
 
   function escapeHtml(s) {
     return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -210,7 +300,10 @@
     let status = null, bodyText = '', ok = false, error = null;
 
     try {
-      const res = await fetch(tc.path, { headers: { 'Accept': 'application/json' } });
+      const res = await fetch(tc.path, {
+        method: tc.method,
+        headers: { 'Accept': 'application/json', ...authHeaders(tc.role) },
+      });
       status = res.status;
       bodyText = await res.text();
       ok = status === tc.expect;
@@ -264,6 +357,7 @@
           const tc = {
             method: 'GET',
             path: '/api/v1/certificates/' + encodeURIComponent(domain),
+            role: 'read',
             expect: 200,
             desc: 'Certificate detail: ' + domain,
             rowId: nextId++,
